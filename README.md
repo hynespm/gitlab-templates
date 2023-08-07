@@ -14,3 +14,15 @@
 
 * Gitlab is used to store AWS account numbers (dev,stag and prod)
 * Role assumption from root to environment accounts (dev, stag, prod) via the Control Tower IAM roles is used prior to Terraform cli execution
+* Terraform Repository is structured as follows
+  * backends
+    * dev.hcl
+    * stag.hcl
+    * prod.hcl
+  * environments
+    * dev.tfvars
+    * stag.tfvars
+    * prod.tfvars
+  * main.tf
+  * resrouces.tf
+  * variables.tf
