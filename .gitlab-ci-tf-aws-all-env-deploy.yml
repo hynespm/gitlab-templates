@@ -1,0 +1,132 @@
+# Docker image used by gitlab for pipeline
+image: <MEANINGFUL_IMAGE_DEFINITION>
+
+# Variables useed for automatic tagging of the repository which uses this template. Starting major and minor values are 1.0 but can be adjusted.
+variables:
+  ARTIFACT_VERSION: "1.0"
+
+
+# Includes for jobs which are repeated
+include:
+  - local: "infrastructure/.gitlab-ci-tf-plan.yml"
+  - local: "infrastructure/.gitlab-ci-tf-plan-apply.yml"
+  - local: "infrastructure/.gitlab-ci-tag-version.yml"
+
+
+# Stages for Terraform deployments
+stages:
+  - validate
+  - dev-deploy
+  - stage-plan
+  - stage-deploy
+  - prod-plan
+  - prod-deploy
+  - release
+
+# Job used to check the TF prior to merging to main. A plan against dev is the minimum which can be done here.
+merge-check:
+  stage: validate
+  environment: dev
+  variables:
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_ACCOUNT: $AWS_DEV_ACCOUNT
+  extends: .tf-plan
+  only:
+    - merge-requests
+    - feature/*
+  except:
+    - main
+
+# Deploy to the development environment
+dev-deploy:
+  stage: dev-deploy
+  environment: dev
+  allow_failure: false
+  variables:
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_ACCOUNT: $AWS_DEV_ACCOUNT
+  extends: .tf-plan-apply
+  only:
+    - main
+
+# Plan against staging and store staging plan
+stag-plan:
+  stage: stag-plan
+  environment: stag
+  allow_failure: false
+  variables:
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_ACCOUNT: $AWS_STAGING_ACCOUNT
+  needs: [dev-deploy]
+  extends: .tf-plan
+  artifacts:
+    paths:
+      - stag-plan.tfplan
+  only:
+    - main
+
+# Deploy against staging using the plan from the previous job
+stag-deploy:
+  stage: stag-deploy
+  environment: stag
+  allow_failure: false
+  needs:
+    - job: stag-plan
+      artifacts: true
+  variables:
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_ACCOUNT: $AWS_STAGING_ACCOUNT
+
+  extends: .tf-plan-apply
+  only:
+    - main
+
+# Plan against production and store artifact
+prod-plan:
+  stage: prod-plan
+  environment: prod
+  needs: [stag-deploy]
+  allow_failure: false
+  variables:
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_ACCOUNT: $AWS_PRODUCTION_ACCOUNT
+
+  extends: .tf-plan
+  artifacts:
+    paths:
+      - prod-plan.tfplan
+  only:
+    - main
+
+# Deploy against production using artifact
+prod-deploy:
+  stage: prod-deploy
+  environment: prod
+  needs: [prod-plan]
+  allow_failure: false
+  variables:
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_ACCOUNT: $AWS_PRODUCTION_ACCOUNT
+  extends: .tf-plan-apply
+  only:
+    - main
+
+
+release:
+  stage: release
+  needs: [prod-deploy]
+  extends: .tag-version
+  only:
+    - main

@@ -1,0 +1,10 @@
+####################################################################################
+# Description: Sets version as git tag
+####################################################################################
+.tag-version:
+  script:
+    - git config --global user.name "${GITLAB_USER_NAME}"
+    - git config --global user.email "${GITLAB_USER_EMAIL}"
+    - git remote set-url origin "https://gitlab-ci-token:${GIT_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git tag -a "${ARTIFACT_VERSION}.${CI_JOB_ID}" -m "Version ${ARTIFACT_VERSION}.${CI_JOB_ID}"
+    - git push --tags

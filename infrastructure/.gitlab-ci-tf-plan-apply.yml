@@ -1,0 +1,24 @@
+variables:
+  WORKING_DIR: "."
+  AWS_DEFAULT_REGION: ""
+  AWS_ACCOUNT: ""
+  AWS_ACCESS_KEY_ID: ""
+  AWS_SECRET_ACCESS_KEY: ""
+
+.tf-plan-apply:
+  stage: deploy
+  script:
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.com".insteadOf "https://gitlab.com"
+    - export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+    - export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+    - export AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION
+    - export AWS_ACCOUNT=$AWS_ACCOUNT
+    - export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $(aws sts assume-role --role-arn arn:aws:iam::$AWS_ACCOUNT:role/$AWS_CONTROL_TOWER_ROLE --role-session-name session-$CI_JOB_ID --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+    - cd ${WORKING_DIR}
+    - rm -rf .terraform
+    - terraform --version
+    - terraform init -backend-config=backend/${CI_ENVIRONMENT_NAME}.hcl
+    - terraform fmt -check -diff -recursive
+    - terraform validate
+    - terraform plan -var-file=environments/${CI_ENVIRONMENT_NAME}.tfvars -refresh=true -out=${CI_ENVIRONMENT_NAME}-plan.tfplan
+    - terraform apply -auto-approve ${CI_ENVIRONMENT_NAME}-plan.tfplan
